@@ -8,19 +8,16 @@ import os, sys
 
 error_codes = {
     'usage':1,
-    'version':2,
-    'option':3,
-    'file_not_found':4,
-    'bad_file_read':5,
-    'file_instead_of_dir':6,
-    'bad_bool':7,
-    'bad_module':8,
+    'option':2,
+    'file_not_found':3,
+    'bad_file_read':4,
+    'file_instead_of_dir':5,
+    'bad_bool':6,
+    'bad_module':7,
 }
-
-error_codes = dict()
 _next_code = 9
 
-class add_code(object):
+def add_code(name):
     global _next_code
     if name in error_codes: return
     error_codes[name] = _next_code

@@ -4,19 +4,79 @@
 #Email: tim.tadh@gmail.com
 #For licensing see the LICENSE file in the top level directory.
 
-import os, sys
+import os, sys, functools
+from getopt import getopt, GetoptError
 
-from optutils.lib import log, error_codes
+from .lib import log, error_codes
 
-def make_usage(short, long_msg):
-    return usage
+def format_long(msg):
+    def count_spaces(line):
+        count = 0
+        for c in line:
+            if c == ' ': count += 1
+            else: break
+        return count
+    def strip(line, count):
+        start = 0
+        for c in line:
+            if start >= count: break
+            elif c == ' ': start += 1
+            else: break
+        return line[start:]
+    formatted = list()
+    lines = msg.split('\n')
+    n_spaces = count_spaces(lines[1])
+    return '\n'.join(strip(line, n_spaces) for line in lines)
+
+
+def parse_args(short_opts, long_opts, util):
+    def parse_args(argv):
+        try:
+            opts, args = getopt(argv, short_opts, long_opts)
+        except GetoptError, err:
+            log(err)
+            util.usage(error_codes['option'])
+        return opts, args
+    return parse_args
+
+def make_command(commands):
+    def command(short_msg, long_message, short_opts, long_opts):
+        util = Util(short_msg, format_long(long_message))
+        parser = parse_args(short_opts, long_opts, util)
+        def command(f):
+            @functools.wraps(f)
+            def run_command(argv, *args, **kwargs):
+                return f(argv, util, parser, *args, **kwargs)
+            if commands is not None:
+                commands[f.func_name] = run_command
+            setattr(run_command, 'util', util)
+            return run_command
+        return command
+    return command
+
+main = make_command(None)
 
 class Util(object):
 
     def __init__(self, short_msg, long_msg):
         self.short_msg = short_msg
         self.long_msg = long_msg
-        self.usage = make_usage(short, long_msg)
+        self.commands = dict()
+        self.command = make_command(self.commands)
+
+    def run_command(self, argv, *args, **kwargs):
+        if len(argv) < 1:
+            log("you must supply a command you gave:", str(argv))
+            log(str(self.commands.keys()))
+            self.usage(error_codes['option'])
+        command_name = argv[0].replace('-', '_')
+
+        if command_name in self.commands:
+            self.commands[command_name](argv[1:], *args, **kwargs)
+        else:
+            log("no such command %s" % command_name)
+            log(str(self.commands.keys()))
+            self.usage(error_codes['option'])
 
     def usage(self, code=None):
         '''Prints the usage and exits with an error code specified by code. If
@@ -24,10 +84,17 @@ class Util(object):
         log(self.short_msg)
         if code is None:
             log(self.long_msg)
+
+            if self.commands:
+                log()
+                log('Commands')
+                for name, cmd in self.commands.iteritems():
+                    log(' '*4, "%-15s" % name, ' '*12, cmd.util.short_msg[:50])
+                log()
             code = error_codes['usage']
         sys.exit(code)
 
-    def assert_file_exists(path):
+    def assert_file_exists(self, path):
         '''checks if the file exists. If it doesn't causes the program to exit.
         @param path : path to file
         @returns : the abs path to the file (an echo) [only on success]
@@ -38,7 +105,7 @@ class Util(object):
             self.usage(error_codes['file_not_found'])
         return path
 
-    def assert_dir_exists(path, nocreate=False):
+    def assert_dir_exists(self, path, nocreate=False):
         '''checks if a directory exists. if not it creates it. if something
         exists and it is not a directory it exits with an error.
         @param path : path to file
@@ -58,7 +125,7 @@ class Util(object):
             self.usage(error_codes['file_instead_of_dir'])
         return path
 
-    def read_file_or_die(path):
+    def read_file_or_die(self, path):
         '''Reads the file, if there is an error it kills the program.
         @param path : the path to the file
         @returns string : the contents of the file
