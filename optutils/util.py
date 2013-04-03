@@ -130,7 +130,7 @@ class Util(object):
         @param path : the path to the file
         @returns string : the contents of the file
         '''
-        path = assert_file_exists(path)
+        path = self.assert_file_exists(path)
         try:
             f = open(path, 'r')
             s = f.read()
