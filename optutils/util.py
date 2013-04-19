@@ -125,6 +125,17 @@ class Util(object):
             self.usage(error_codes['file_instead_of_dir'])
         return path
 
+    def assert_in(self, obj, collection):
+        '''checks if the obj in in the collection. dies if not.
+        @param obj : an object
+        @param collection : must support the "in" operator
+        @returns : the obj
+        '''
+        if obj not in collection:
+            log("obj '%s' not in %s" % (str(obj), str(collection)))
+            self.usage(error_codes['not_in_collection'])
+        return obj
+
     def read_file_or_die(self, path):
         '''Reads the file, if there is an error it kills the program.
         @param path : the path to the file

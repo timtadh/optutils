@@ -14,6 +14,7 @@ error_codes = {
     'file_instead_of_dir':5,
     'bad_bool':6,
     'bad_module':7,
+    'not_in_collection':8,
 }
 _next_code = 9
 
