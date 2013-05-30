@@ -27,82 +27,82 @@ terse yet informative.
 # A Minimal Optutils Program with a Subcommand
 
 ```python
-    #!/usr/bin/env python
-    # -*- coding: utf-8 -*-
-    #Author: Tim Henderson
-    #Email: tim.tadh@gmail.com, tadh@case.edu
-    #For licensing see the LICENSE file in the top level directory.
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#Author: Tim Henderson
+#Email: tim.tadh@gmail.com, tadh@case.edu
+#For licensing see the LICENSE file in the top level directory.
 
 
-    import os, sys, json
+import os, sys, json
 
-    import optutils
-    from optutils import output, log, error_codes, add_code
-
-
-    __version__ = 'git master'
-
-    add_code('version')
-
-    def version():
-        '''Print version and exits'''
-        log('version :', __version__)
-        sys.exit(error_codes['version'])
+import optutils
+from optutils import output, log, error_codes, add_code
 
 
-    @optutils.main(
-        'usage: example <command>',
+__version__ = 'git master'
+
+add_code('version')
+
+def version():
+    '''Print version and exits'''
+    log('version :', __version__)
+    sys.exit(error_codes['version'])
+
+
+@optutils.main(
+    'usage: example <command>',
+    '''
+    Example:
+
+        $ example command what
+
+    Options
+        -h, help                      print this message
+        -v, version                   print the version
+    ''',
+    'hv',
+    ['help', 'version'],
+)
+def main(argv, util, parser):
+    """
+    The main entry point to the program
+    """
+
+    @util.command(
+        'usage: command [args]',
         '''
         Example:
 
-            $ example command what
-
         Options
             -h, help                      print this message
-            -v, version                   print the version
         ''',
-        'hv',
-        ['help', 'version'],
+        'h',
+        ['help',],
     )
-    def main(argv, util, parser):
-        """
-        The main entry point to the program
-        """
-
-        @util.command(
-            'usage: command [args]',
-            '''
-            Example:
-
-            Options
-                -h, help                      print this message
-            ''',
-            'h',
-            ['help',],
-        )
-        def command(argv, util, parser, setting):
-
-            opts, args = parser(argv)
-            for opt, arg in opts:
-                if opt in ('-h', '--help',):
-                    util.usage()
-
-            print ' '.join(args)
-            print 'running with', setting
-
+    def command(argv, util, parser, setting):
 
         opts, args = parser(argv)
         for opt, arg in opts:
             if opt in ('-h', '--help',):
                 util.usage()
-            elif opt in ('-v', '--version',):
-                version()
 
-        setting = 'wizards'
+        print ' '.join(args)
+        print 'running with', setting
 
-        util.run_command(args, setting)
 
-    if __name__ == '__main__':
-        sys.exit(main(sys.argv[1:]))
+    opts, args = parser(argv)
+    for opt, arg in opts:
+        if opt in ('-h', '--help',):
+            util.usage()
+        elif opt in ('-v', '--version',):
+            version()
+
+    setting = 'wizards'
+
+    util.run_command(args, setting)
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
 ```
 
