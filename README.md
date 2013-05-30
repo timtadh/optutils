@@ -26,6 +26,7 @@ terse yet informative.
 
 # A Minimal Optutils Program with a Subcommand
 
+```python
     #!/usr/bin/env python
     # -*- coding: utf-8 -*-
     #Author: Tim Henderson
@@ -103,5 +104,5 @@ terse yet informative.
 
     if __name__ == '__main__':
         sys.exit(main(sys.argv[1:]))
-
+```
 
