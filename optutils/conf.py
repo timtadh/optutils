@@ -5,11 +5,10 @@
 #Copyright (C) 2012 All Rights Reserved
 #For licensing see the LICENSE file in the top level directory.
 
-import sys, os, json, logging
+import sys, os, json
 import cStringIO as sio
 
-import log_conf
-log = logging.getLogger('conf')
+class ConfigError(Exception): pass
 
 def encode(d):
     new = dict()
@@ -78,70 +77,85 @@ class Section(object):
     def __getitem__(self, name):
         return self.__getattribute__(name)
 
+def json_parser(file_path):
+    with open(file_path, 'rb') as f:
+        try:
+            return json.load(f, object_hook=encode)
+        except ValueError, e:
+            msg = (
+                "The config file at '%s' appears to be corrupted." %
+                file_path
+            )
+            raise ConfigError(msg)
 
 class BaseConfig(object):
 
     def __new__(cls, schema, *paths, **kwargs):
+        '''Base Config
+
+        :param schema: the schema the files must match
+        :param *paths: a list of paths to try to read from (and cascade)
+        :param local_updates={}: a dictionary which matches the schema to apply
+                                 after all paths. Useful for over-riding values
+                                 from command line params.
+        :param parser=json_parser: a function file_path -> dict(). By default
+                                   this speaks JSON. Using this you can
+                                   override that with another language. Just
+                                   make sure it outputs JSON compatible
+                                   dictionaries.
+        '''
         self = super(BaseConfig, cls).__new__(cls)
+        self._d = dict()
         self.schema = schema
         self.paths = paths
+        self.parser = kwargs.get('parser', json_parser)
         conf_dicts = self.__process_paths(paths)
-        local_updates = kwargs.get('local_updates', dict())
-        self._matches(local_updates)
-        conf_dicts.append({'ok':True, 'path':'local_updates',
-          'conf':local_updates})
+        local_updates = kwargs.get('local_updates', None)
+        if local_updates is not None:
+            self._matches(local_updates)
+            conf_dicts.append({'ok':True, 'path':'local_updates',
+              'conf':local_updates})
         self._d = self._cascade(conf_dicts)
-        if all(d['ok'] == False 
-              for d in conf_dicts 
+        if all(d['ok'] == False
+              for d in conf_dicts
               if d['path'] is not 'skeleton'):
-            log.error('no good configuration found')
+            raise ConfigError, 'no good configuration found'
         return self
 
     def __init__(self, schema, *paths, **kwargs):
         self._expose_dict()
 
     def __process_paths(self, paths):
-        log.debug(
-          'Cascading config files at:\n%s' % 
-            '\n'.join(' '*12+p for p in paths))
         conf_dicts = [{'ok':True, 'path':'skeleton', 'conf':self._skeleton()}]
         for file_path in paths:
             if os.path.exists(file_path):
-                with open(file_path, 'rb') as f:
-                    try:
-                        d = json.load(f, object_hook=encode)
-                        self._matches(d)
-                        conf_dicts.append({
-                          'ok':True, 
-                          'path':file_path, 
-                          'conf':d})
-                    except ValueError, e:
-                        log.exception(
-                            "The config file at '%s' appears to be corrupted."%
-                            file_path
-                        )
-                        sys.exit(1)
+                d = self.parser(file_path)
+                self._matches(d)
+                conf_dicts.append({
+                  'ok':True,
+                  'path':file_path,
+                  'conf':d
+                })
             else:
                 conf_dicts.append({
-                  'ok':False, 
+                  'ok':False,
                   'path':file_path,
                   'conf':self._skeleton()})
-        for conf in conf_dicts:
-            s = ''.join((
-                str(conf['path']) + '\n', 
-                ' '*8 + str(conf['ok']) + '\n',   
-                ' '*8 + str(conf['conf'])))
-            log.debug(s)
         return conf_dicts
 
     def __getattribute__(self, name):
-        try:
+        if name == '_d' or name == '_exposed':
             return object.__getattribute__(self, name)
-        except AttributeError:
+
+        if name in self._d:
             return self._exposed.__getattribute__(name)
+        return super(BaseConfig, self).__getattribute__(name)
 
     def __getitem__(self, name):
-        return self.__getattribute__(name)
+        return self._d[name]
+
+    def keys(self):
+        return self._d.keys()
 
     ## public methods ## ##
     def write_conf(self, file_path):
@@ -217,10 +231,10 @@ class BaseConfig(object):
             else:
                 if allow_none and v2 is None: return
                 type_ = gettype(v1)
-                try: 
+                try:
                     assert isinstance(v2, type_)
-                except: 
-                    msg = ("%s must be of type %s, got type %s" % 
+                except:
+                    msg = ("%s must be of type %s, got type %s" %
                             (v2, type_, str(type(v2))))
                     raise AssertionError, msg
         def proclist(t, d):
@@ -236,8 +250,8 @@ class BaseConfig(object):
         def procdict(t, d):
             '''process a dictionary type'''
             if not isinstance(d, dict):
-                raise AssertionError, "Expected a <type 'dict'> got %s, '%s'"\
-                                      % (type(d), str(d))
+              raise AssertionError, "Expected a <type 'dict'> got %s, '%s'\n %s %s"\
+                                      % (type(d), str(d), str(t), str(d))
             tkeys = set(t.keys());
             dkeys = set(d.keys());
             if '__undefinedkeys__' in tkeys:
@@ -280,8 +294,6 @@ class BaseConfig(object):
         conf = dict()
         for d in dicts:
             if d['ok']:
-                log.debug('cascading %s\n%s' %
-                    (str(d['path']), ' '*8+str(d['conf'])))
                 procdict(conf, d['conf'])
         return conf
 
