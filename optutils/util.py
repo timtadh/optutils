@@ -34,14 +34,14 @@ def parse_args(short_opts, long_opts, util):
         try:
             opts, args = getopt(argv, short_opts, long_opts)
         except GetoptError, err:
-            log(err)
+            util.log(err)
             util.usage(error_codes['option'])
         return opts, args
     return parse_args
 
-def make_command(commands):
+def make_command(commands, logf):
     def command(short_msg, long_message, short_opts, long_opts):
-        util = Util(short_msg, format_long(long_message))
+        util = Util(short_msg, format_long(long_message), logf)
         parser = parse_args(short_opts, long_opts, util)
         def command(f):
             @functools.wraps(f)
@@ -54,43 +54,45 @@ def make_command(commands):
         return command
     return command
 
-main = make_command(None)
+main = make_command(None, log)
+custom_log_main = lambda logf: make_command(None, logf)
 
 class Util(object):
 
-    def __init__(self, short_msg, long_msg):
+    def __init__(self, short_msg, long_msg, logf):
+        self.log = logf
         self.short_msg = short_msg
         self.long_msg = long_msg
         self.commands = dict()
-        self.command = make_command(self.commands)
+        self.command = make_command(self.commands, self.log)
 
     def run_command(self, argv, *args, **kwargs):
         if len(argv) < 1:
-            log("you must supply a command you gave:", str(argv))
-            log(str(self.commands.keys()))
+            self.log("you must supply a command you gave:", str(argv))
+            self.log(str(self.commands.keys()))
             self.usage(error_codes['option'])
         command_name = argv[0].replace('-', '_')
 
         if command_name in self.commands:
             self.commands[command_name](argv[1:], *args, **kwargs)
         else:
-            log("no such command %s" % command_name)
-            log(str(self.commands.keys()))
+            self.log("no such command %s" % command_name)
+            self.log(str(self.commands.keys()))
             self.usage(error_codes['option'])
 
     def usage(self, code=None):
         '''Prints the usage and exits with an error code specified by code. If
         code is not given it exits with error_codes['usage']'''
-        log(self.short_msg)
+        self.log(self.short_msg)
         if code is None:
-            log(self.long_msg)
+            self.log(self.long_msg)
 
             if self.commands:
-                log()
-                log('Commands')
+                self.log()
+                self.log('Commands')
                 for name, cmd in self.commands.iteritems():
-                    log(' '*4, "%-15s" % name, ' '*12, cmd.util.short_msg[:50])
-                log()
+                    self.log(' '*4, "%-15s" % name, ' '*12, cmd.util.short_msg[:50])
+                self.log()
             code = error_codes['usage']
         sys.exit(code)
 
@@ -101,7 +103,7 @@ class Util(object):
         '''
         path = os.path.abspath(os.path.expanduser(path))
         if not os.path.exists(path):
-            log('No file found. "%(path)s"' % locals())
+            self.log('No file found. "%(path)s"' % locals())
             self.usage(error_codes['file_not_found'])
         return path
 
@@ -116,12 +118,12 @@ class Util(object):
         '''
         path = os.path.abspath(path)
         if not os.path.exists(path) and nocreate:
-            log('No directory exists at location "%(path)s"' % locals())
+            self.log('No directory exists at location "%(path)s"' % locals())
             self.usage(error_codes['file_not_found'])
         elif not os.path.exists(path):
             os.mkdir(path)
         elif not os.path.isdir(path):
-            log('Expected a directory found a file. "%(path)s"' % locals())
+            self.log('Expected a directory found a file. "%(path)s"' % locals())
             self.usage(error_codes['file_instead_of_dir'])
         return path
 
@@ -132,7 +134,7 @@ class Util(object):
         @returns : the obj
         '''
         if obj not in collection:
-            log("obj '%s' not in %s" % (str(obj), str(collection)))
+            self.log("obj '%s' not in %s" % (str(obj), str(collection)))
             self.usage(error_codes['not_in_collection'])
         return obj
 
@@ -147,7 +149,7 @@ class Util(object):
             s = f.read()
             f.close()
         except Exception:
-            log('Error reading file at "%s".' % path)
+            self.log('Error reading file at "%s".' % path)
             self.usage(error_codes['bad_file_read'])
         return s
 
@@ -159,7 +161,7 @@ class Util(object):
         try:
             return int(s)
         except ValueError, e:
-            log(e.message)
+            self.log(e.message)
             self.usage(error_codes['bad_int'])
 
     def getfile(self, path, mode, default):
