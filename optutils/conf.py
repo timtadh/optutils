@@ -5,7 +5,7 @@
 #Copyright (C) 2012 All Rights Reserved
 #For licensing see the LICENSE file in the top level directory.
 
-import sys, os, json
+import sys, os, json, collections
 import cStringIO as sio
 
 class ConfigError(Exception): pass
@@ -45,9 +45,10 @@ def make_val_get(d, key):
 def _set(self,k,v): raise RuntimeError, 'Operation Not Supported'
 def _del(self): raise RuntimeError, 'Operation Not Supported'
 
-class Section(object):
+class Section(collections.Mapping):
 
     def __init__(self, d):
+        object.__setattr__(self, '_d', d)
 
         for k,v in d.iteritems():
             if not (isinstance(v, dict) or isinstance(v, list)):
@@ -73,6 +74,15 @@ class Section(object):
         if type(object.__getattribute__(self, name)) == property:
             return object.__getattribute__(self, name).fget(self)
         return object.__getattribute__(self, name)
+
+    def __contains__(self, name):
+        return name in self._d
+
+    def __iter__(self):
+        return self._d.iterkeys()
+
+    def __len__(self):
+        return len(self._d)
 
     def __getitem__(self, name):
         return self.__getattribute__(name)
