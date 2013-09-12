@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 setup(name='optutils',
-      version='git master',
+      version='.01',
       description=(
         'Small, composable utilities for writing great command line tools.'
       ),
