@@ -30,14 +30,7 @@ def encode(d):
 
 def json_parser(file_path):
     with open(file_path, 'rb') as f:
-        try:
-            return json.load(f, object_hook=encode)
-        except ValueError, e:
-            msg = (
-                "The config file at '%s' appears to be corrupted." %
-                file_path
-            )
-            raise ConfigError(msg)
+        return json.load(f, object_hook=encode)
 
 def strbool(*args):
     if not args:
