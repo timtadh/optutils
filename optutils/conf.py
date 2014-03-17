@@ -211,7 +211,10 @@ class BaseConfig(object):
         self._expose_dict()
 
     ## ## private methods ## ##
-    def _expose_dict(self):
+    def _export_dict(self):
+        self._exposed = self._create_section(self._d)
+
+    def _create_section(self, d):
 
         def proc(v):
             if isinstance(v, dict):
@@ -234,7 +237,7 @@ class BaseConfig(object):
             )
             return Section(a)
 
-        self._exposed = procdict(self._d)
+        return procdict(d)
 
     def _skeleton(self):
         '''
