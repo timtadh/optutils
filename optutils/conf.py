@@ -128,6 +128,9 @@ class BaseConfig(object):
         self.errors = list()
         for d in conf_dicts:
             if d['err'] != None:
+                if not isinstance(d['err'], list):
+                    self.errors.append(d['path'] + ' - ' + d['err'])
+                    continue
                 for err in d['err']:
                     self.errors.append(d['path'] + ' - ' + err)
 
@@ -157,11 +160,11 @@ class BaseConfig(object):
                 try:
                     d = self.parser(file_path)
                 except Exception, e:
-                    err = 'file did not parse ' + ', '.join(e.args)
+                    err = 'file did not parse. ' + ', '.join(e.args)
                 self.__process_dict(conf_dicts, file_path, d, err)
             else:
                 self.__process_dict(
-                    conf_dicts, file_path, d,
+                    conf_dicts, file_path, None,
                     'File %s did not exist' % file_path
                 )
         return conf_dicts
