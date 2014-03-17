@@ -320,8 +320,8 @@ class BaseConfig(object):
                     add_error(path, msg)
                     return
                 v1 = t[UNDEFINED_KEYS ]
-                for v2 in d.values():
-                    proc(v1, v2, os.path.join(path, '*'))
+                for k, v2 in d.iteritems():
+                    proc(v1, v2, os.path.join(path, k))
             else:
                 badkeys = set()
                 for k in dkeys:
