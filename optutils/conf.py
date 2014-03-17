@@ -8,6 +8,8 @@
 import sys, os, json, collections
 import cStringIO as sio
 
+UNDEFINED_KEYS = '__undefinedkeys__'
+
 class ConfigError(Exception): pass
 
 def encode(d):
@@ -26,67 +28,6 @@ def encode(d):
         new[k] = v
     return new
 
-def make_list_get(d, key):
-    def get(self):
-        return [
-            Section(i) for i in d[key] if isinstance(i, dict)
-        ] + [
-            i for i in d[key] if not isinstance(i, dict)
-        ]
-    return get
-def make_sec_get(d, key):
-    def get(self):
-        return Section(d[key])
-    return get
-def make_val_get(d, key):
-    def get(self):
-        return d[key]
-    return get
-def _set(self,k,v): raise RuntimeError, 'Operation Not Supported'
-def _del(self): raise RuntimeError, 'Operation Not Supported'
-
-class Section(collections.Mapping):
-
-    def __init__(self, d):
-        object.__setattr__(self, '_d', d)
-
-        for k,v in d.iteritems():
-            if not (isinstance(v, dict) or isinstance(v, list)):
-                p = property(make_val_get(d, k),_set,_del,
-                    'Property for interacting with "%s"' % k)
-            elif isinstance(v, dict):
-                p = property(make_sec_get(d, k),_set,_del,
-                    'Property for interacting with "%s"' % k)
-            elif isinstance(v, list):
-                p = property(make_list_get(d, k),_set,_del,
-                    'Property for interacting with "%s"' % k)
-            object.__setattr__(self, k, p)
-
-    def __repr__(self):
-        l = list()
-        for name in dir(self):
-            a = object.__getattribute__(self, name)
-            if type(a) == property: l.append((name, str(a.fget(self))))
-
-        return str(dict(l))
-
-    def __getattribute__(self, name):
-        if type(object.__getattribute__(self, name)) == property:
-            return object.__getattribute__(self, name).fget(self)
-        return object.__getattribute__(self, name)
-
-    def __contains__(self, name):
-        return name in self._d
-
-    def __iter__(self):
-        return self._d.iterkeys()
-
-    def __len__(self):
-        return len(self._d)
-
-    def __getitem__(self, name):
-        return self.__getattribute__(name)
-
 def json_parser(file_path):
     with open(file_path, 'rb') as f:
         try:
@@ -98,6 +39,55 @@ def json_parser(file_path):
             )
             raise ConfigError(msg)
 
+def strbool(*args):
+    if not args:
+        return False
+    arg = ''.join(args).lower()
+    if arg == 'true':
+        return True
+    elif arg == 'false':
+        return False
+    raise Exception, '"%s" is not true or false' % arg
+
+default_types = {
+    'str': str,
+    'bool': strbool,
+    'int': int,
+    'float': float,
+}
+
+class Section(collections.Mapping):
+
+    def __init__(self, d):
+        object.__setattr__(self, '_d', d)
+
+    def __repr__(self):
+        return str(self._d)
+
+    def __getattribute__(self, name):
+        if name == '_d':
+            return super(Section, self).__getattribute__(name)
+        if name in self._d:
+            return self._d[name]
+        return super(Section, self).__getattribute__(name)
+
+    def __setattr__(self, name, value):
+        if name in self._d:
+            raise TypeError, "Section does not support item assignment"
+        return super(Section, self).__setattr__(name, value)
+
+    def __contains__(self, name):
+        return name in self._d
+
+    def __iter__(self):
+        return self._d.iterkeys()
+
+    def __len__(self):
+        return len(self._d)
+
+    def __getitem__(self, name):
+        return self._d[name]
+
 class BaseConfig(object):
 
     def __new__(cls, schema, *paths, **kwargs):
@@ -108,6 +98,13 @@ class BaseConfig(object):
         :param local_updates={}: a dictionary which matches the schema to apply
                                  after all paths. Useful for over-riding values
                                  from command line params.
+        :param types=default_types: a dictionary (string->type-func) which maps
+                                    schema strings to the desired python type.
+                                    These functions should take a string and
+                                    parse it into a python type. If no argument
+                                    is given they should provide a default
+                                    value. If there is a parsing error it should
+                                    simply raise an exception.
         :param parser=json_parser: a function file_path -> dict(). By default
                                    this speaks JSON. Using this you can
                                    override that with another language. Just
@@ -118,40 +115,74 @@ class BaseConfig(object):
         self._d = dict()
         self.schema = schema
         self.paths = paths
+        self.types = kwargs.get('types', default_types)
         self.parser = kwargs.get('parser', json_parser)
-        conf_dicts = self.__process_paths(paths)
         local_updates = kwargs.get('local_updates', None)
+
+        conf_dicts = self.__process_paths(paths)
         if local_updates is not None:
-            self._matches(local_updates)
-            conf_dicts.append({'ok':True, 'path':'local_updates',
-              'conf':local_updates})
+            self.__process_dict(conf_dicts, 'local_updates', local_updates, None)
+
         self._d = self._cascade(conf_dicts)
-        if all(d['ok'] == False
-              for d in conf_dicts
-              if d['path'] is not 'skeleton'):
-            raise ConfigError, 'no good configuration found'
+
+        self.errors = list()
+        for d in conf_dicts:
+            if d['err'] != None:
+                for err in d['err']:
+                    self.errors.append(d['path'] + ' - ' + err)
+
+
+        no_good_conf = all(
+            d['ok'] == False
+            for d in conf_dicts
+            if d['path'] is not 'skeleton'
+        )
+
+        if no_good_conf:
+            raise ConfigError('no good configuration found', *self.errors)
+
         return self
 
     def __init__(self, schema, *paths, **kwargs):
         self._expose_dict()
 
     def __process_paths(self, paths):
-        conf_dicts = [{'ok':True, 'path':'skeleton', 'conf':self._skeleton()}]
+        conf_dicts = [
+          {'ok':True, 'path':'skeleton', 'conf':self._skeleton(), 'err':None},
+        ]
         for file_path in paths:
             if os.path.exists(file_path):
-                d = self.parser(file_path)
-                self._matches(d)
-                conf_dicts.append({
-                  'ok':True,
-                  'path':file_path,
-                  'conf':d
-                })
+                d = None
+                err = None
+                try:
+                    d = self.parser(file_path)
+                except Exception, e:
+                    err = 'file did not parse ' + ', '.join(e.args)
+                self.__process_dict(conf_dicts, file_path, d, err)
             else:
-                conf_dicts.append({
-                  'ok':False,
-                  'path':file_path,
-                  'conf':self._skeleton()})
+                self.__process_dict(
+                    conf_dicts, file_path, d,
+                    'File %s did not exist' % file_path
+                )
         return conf_dicts
+
+    def __process_dict(self, conf_dicts, file_path, d, err):
+          if err == None:
+              err = self._validate(d)
+          if err == None :
+              conf_dicts.append({
+                'ok':True,
+                'path':file_path,
+                'conf':d,
+                'err':None,
+              })
+          else:
+              conf_dicts.append({
+                'ok':False,
+                'path':file_path,
+                'conf':dict(),
+                'err':err,
+              })
 
     def __getattribute__(self, name):
         if name == '_d' or name == '_exposed':
@@ -164,14 +195,11 @@ class BaseConfig(object):
     def __getitem__(self, name):
         return self._d[name]
 
+    def __repr__(self):
+        return str(self._d)
+
     def keys(self):
         return self._d.keys()
-
-    ## public methods ## ##
-    def write_conf(self, file_path):
-        self._matches(self._d)
-        with open(file_path, 'wb') as f:
-            json.dump(self._d, f, indent=4)
 
     def update(self, d):
         '''
@@ -188,122 +216,178 @@ class BaseConfig(object):
 
     ## ## private methods ## ##
     def _expose_dict(self):
-        self._exposed = Section(self._d)
+
+        def proc(v):
+            if isinstance(v, dict):
+                return procdict(v)
+            elif isinstance(v, list):
+                return proclist(v)
+            else:
+                return v
+
+        def proclist(l):
+            return tuple([
+                proc(v)
+                for v in l
+            ])
+
+        def procdict(d):
+            a = dict(
+                (k, proc(v))
+                for k,v in d.iteritems()
+            )
+            return Section(a)
+
+        self._exposed = procdict(self._d)
 
     def _skeleton(self):
         '''
         produce a skeleton dictionary from the schema (with nones for values)
         '''
-        def getdefault(s):
-            '''transform a string into a type'''
-            if   s == 'str'  : return str()
-            elif s == 'int'  : return 0
-            elif s == 'float': return 0.0
-            elif s == 'bool' : return False
-            raise Exception, 'Type %s unsupported' % s
         def proc(t):
             if   isinstance(t, dict):
                 return procdict(t, dict())
             elif isinstance(t, list):
                 return list()
             else:
-                return getdefault(t)
+                return str(self.gettype(t)())
         def procdict(t, d):
-            if '__undefinedkeys__' in t:
+            if UNDEFINED_KEYS in t:
                 return dict()
             for k,v in t.iteritems():
                 d[k] = proc(v)
             return d
         return procdict(self.schema, dict())
 
-    def _matches(self, d, allow_none=False):
+    def gettype(self, s):
+        '''transform a string into a type'''
+        if s in self.types:
+            return self.types[s]
+        raise Exception, 'Type %s unsupported' % s
+
+    def _validate(self, d, allow_none=False):
         '''
         Assert that d matches the schema
-        @param d = the dictionary
-        @param allow_none = allow Nones in d
+
+        :param d: the dictionary
+        :param allow_none: allow Nones in d
+        :returns: errors, which will be None if there were no errors.
         '''
-        def gettype(s):
-            '''transform a string into a type'''
-            if   s == 'str'  : return str
-            elif s == 'list' : return list
-            elif s == 'dict' : return dict
-            elif s == 'int'  : return int
-            elif s == 'float': return float
-            elif s == 'bool' : return bool
-            raise Exception, 'Type %s unsupported' % s
-        def proc(v1, v2):
+
+        errors = list()
+
+        def add_error(path, msg):
+            errors.append("%s/ - %s" % (path, msg))
+
+        def proc(v1, v2, path):
             '''process 2 values assert they are of the same type'''
-            #print 'proc>', v1, v2
             if   isinstance(v1, dict):
-                procdict(v1, v2)
+                procdict(v1, v2, path)
             elif isinstance(v1, list):
-                proclist(v1, v2)
+                proclist(v1, v2, path)
             else:
-                if allow_none and v2 is None: return
-                type_ = gettype(v1)
                 try:
-                    assert isinstance(v2, type_)
-                except:
-                    msg = ("%s must be of type %s, got type %s" %
-                            (v2, type_, str(type(v2))))
-                    raise AssertionError, msg
-        def proclist(t, d):
+                    self.gettype(v1)(v2)
+                except Exception, e:
+                    add_error(path, ', '.join(e.args))
+
+        def proclist(t, d, path):
             '''process a list type'''
-            assert len(t) == 1
+            if len(t) != 1:
+                msg = "A list schema should have only one item. Got " + str(t)
+                add_error(path, msg)
             if not isinstance(d, list):
-                msg = ("Expected a <type 'list'> got %s" % type(d))
-                raise AssertionError, msg
+                msg = ("Expected a list got %s" % type(d))
+                add_error(path, msg)
+                return
             v1 = t[0]
-            for v2 in d:
-                #print v1, v2
-                proc(v1, v2)
-        def procdict(t, d):
+            for i, v2 in enumerate(d):
+                proc(v1, v2, os.path.join(path, str(i)))
+
+        def procdict(t, d, path):
             '''process a dictionary type'''
             if not isinstance(d, dict):
-              raise AssertionError, "Expected a <type 'dict'> got %s, '%s'\n %s %s"\
-                                      % (type(d), str(d), str(t), str(d))
-            tkeys = set(t.keys());
-            dkeys = set(d.keys());
-            if '__undefinedkeys__' in tkeys:
-                v1 = t['__undefinedkeys__']
+              msg = (
+                "Expected a dict got %s, '%s'\n %s %s" %
+                (type(d), str(d), str(t), str(d))
+              )
+              add_error(path, msg)
+              return
+            tkeys = set(t.keys())
+            dkeys = set(d.keys())
+            if UNDEFINED_KEYS in tkeys:
+                if len(tkeys) != 1:
+                    msg = (
+                        "A dict schema with __undefinedkeys__ should have "
+                        "only one item. Got " + str(t)
+                    )
+                    add_error(path, msg)
+                    return
+                v1 = t[UNDEFINED_KEYS ]
                 for v2 in d.values():
-                    proc(v1, v2)
+                    proc(v1, v2, os.path.join(path, '*'))
             else:
+                badkeys = set()
                 for k in dkeys:
-                    try: assert k in tkeys
-                    except:
+                    if k not in tkeys:
                         msg = (
-                          'Unexpected name, "%s". The name must be in %s'
-                        ) % (k, str(tkeys))
-                        raise AssertionError, msg
+                          "Unexpected name, '%s'. The name must be in %s"
+                        ) % (k, str(list(tkeys)))
+                        add_error(path, msg)
+                        badkeys.add(k)
                 for k in dkeys:
-                    #print '> ', k
+                    if k in badkeys:
+                        continue
                     v1 = t[k]
                     v2 = d[k]
-                    proc(v1, v2)
-        proc(self.schema, d)
+                    proc(v1, v2, os.path.join(path, k))
+
+        proc(self.schema, d, '/')
+        if len(errors) == 0:
+            return None
+        return errors
 
     def _cascade(self, dicts):
         '''
         cascades the configurations on top of one another.
         @param dicts = a sequence of dictionaries
         '''
-        def aply(a,k,v):
-            '''applys the key value to the collection a with the name name'''
-            a[k] = v
-        def proc(a,k,v):
-            '''processes the item a'''
+
+        def template(t, k):
+            if UNDEFINED_KEYS in t:
+                return t[UNDEFINED_KEYS]
+            return t[k]
+
+        def gettype(item):
+            if isinstance(item, dict):
+                return dict
+            elif isinstance(item, list):
+                return list
+            return self.gettype(item)
+
+        def proc(t, a, v):
             if isinstance(v, dict):
-                if k not in a or not isinstance(a[k], dict): a[k] = dict()
-                procdict(a[k], v)
+                return procdict(t, a, v)
+            elif isinstance(v, list):
+                return proclist(t, a, v)
             else:
-                aply(a,k,v)
-        def procdict(a, d):
+                return gettype(t)(v)
+
+        def proclist(t, a, d):
+            return [
+                proc(t[0], gettype(t[0])(), v)
+                for v in d
+            ]
+
+        def procdict(t, a, d):
             for k,v in d.iteritems():
-                proc(a,k,v)
+                item = template(t, k)
+                a[k] = proc(item, a.get(k, gettype(item)()), v)
+            return a
+
         conf = dict()
         for d in dicts:
             if d['ok']:
-                procdict(conf, d['conf'])
+                procdict(self.schema, conf, d['conf'])
         return conf
 
