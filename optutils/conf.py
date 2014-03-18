@@ -140,7 +140,7 @@ class BaseConfig(object):
         return self
 
     def __init__(self, schema, *paths, **kwargs):
-        self._expose_dict()
+        self._export_dict()
 
     def __process_paths(self, paths):
         conf_dicts = [
