@@ -203,7 +203,10 @@ class BaseConfig(object):
         down onto the current configurator and re-expose.
         @param d : the dict of new configuration options
         '''
-        self._matches(d)
+        err = self._validate(d)
+        if err:
+            raise ConfigError('update did not validate', *err)
+
         self._d = self._cascade([
           {'ok':True, 'path':'current', 'conf':self._d},
           {'ok':True, 'path':'new_mixin', 'conf':d}
