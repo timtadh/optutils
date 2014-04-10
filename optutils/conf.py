@@ -249,7 +249,7 @@ class BaseConfig(object):
             elif isinstance(t, list):
                 return list()
             else:
-                return str(self.gettype(t)())
+                return self.gettype(t)()
         def procdict(t, d):
             if UNDEFINED_KEYS in t:
                 return dict()
