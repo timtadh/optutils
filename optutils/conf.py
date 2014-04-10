@@ -35,7 +35,10 @@ def json_parser(file_path):
 def strbool(*args):
     if not args:
         return False
-    arg = ''.join(args).lower()
+    arg = args[0]
+    if isinstance(arg, bool):
+        return arg
+    arg = arg.lower()
     if arg == 'true':
         return True
     elif arg == 'false':

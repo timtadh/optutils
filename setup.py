@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 setup(name='optutils',
-      version='.02.2',
+      version='.02.3',
       description=(
         'Small, composable utilities for writing great command line tools.'
       ),
