@@ -192,7 +192,7 @@ class BaseConfig(object):
         return super(BaseConfig, self).__getattribute__(name)
 
     def __getitem__(self, name):
-        return self._d[name]
+        return self._exposed.__getattribute__(name)
 
     def __repr__(self):
         return str(self._d)
