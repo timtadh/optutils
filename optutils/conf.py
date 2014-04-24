@@ -194,6 +194,9 @@ class BaseConfig(object):
     def __getitem__(self, name):
         return self._exposed.__getattribute__(name)
 
+    def __contains__(self, name):
+        return name in self._exposed
+
     def __repr__(self):
         return str(self._d)
 
