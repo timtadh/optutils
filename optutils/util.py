@@ -83,16 +83,16 @@ class Util(object):
     def usage(self, code=None):
         '''Prints the usage and exits with an error code specified by code. If
         code is not given it exits with error_codes['usage']'''
-        self.log(self.short_msg)
+        self.output(self.short_msg)
         if code is None:
-            self.log(self.long_msg)
+            self.output(self.long_msg)
 
             if self.commands:
-                self.log()
-                self.log('Commands')
+                self.output()
+                self.output('Commands')
                 for name, cmd in self.commands.iteritems():
-                    self.log(' '*4, "%-15s" % name, ' '*12, cmd.util.short_msg[:50])
-                self.log()
+                    self.output(' '*4, "%-15s" % name, ' '*12, cmd.util.short_msg[:50])
+                self.output()
             code = error_codes['usage']
         sys.exit(code)
 
