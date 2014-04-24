@@ -7,7 +7,7 @@
 import os, sys, functools
 from getopt import getopt, GetoptError
 
-from .lib import log, error_codes
+from .lib import log, output, error_codes
 
 def format_long(msg):
     def count_spaces(line):
@@ -83,16 +83,16 @@ class Util(object):
     def usage(self, code=None):
         '''Prints the usage and exits with an error code specified by code. If
         code is not given it exits with error_codes['usage']'''
-        self.output(self.short_msg)
+        output(self.short_msg)
         if code is None:
-            self.output(self.long_msg)
+            output(self.long_msg)
 
             if self.commands:
-                self.output()
-                self.output('Commands')
+                output()
+                output('Commands')
                 for name, cmd in self.commands.iteritems():
-                    self.output(' '*4, "%-15s" % name, ' '*12, cmd.util.short_msg[:50])
-                self.output()
+                    output(' '*4, "%-15s" % name, ' '*12, cmd.util.short_msg[:50])
+                output()
             code = error_codes['usage']
         sys.exit(code)
 
