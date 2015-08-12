@@ -154,7 +154,7 @@ class Util(object):
         return s
 
     def parse_int(self, s):
-        '''Try and parse and int. die on failure.
+        '''Try and parse an int. die on failure.
         @param s : a string
         @returns int
         '''
@@ -163,6 +163,17 @@ class Util(object):
         except ValueError, e:
             self.log(e.message)
             self.usage(error_codes['bad_int'])
+
+    def parse_float(self, s):
+        '''Try and parse a float. die on failure.
+        @param s : a string
+        @returns float
+        '''
+        try:
+            return float(s)
+        except ValueError, e:
+            self.log(e.message)
+            self.usage(error_codes['bad_float'])
 
     def getfile(self, path, mode, default):
         '''Get a file from either a path + mode or return a default file. If

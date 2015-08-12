@@ -15,8 +15,10 @@ error_codes = {
     'bad_bool':6,
     'bad_module':7,
     'not_in_collection':8,
+    'bad_int':9,
+    'bad_float':10,
 }
-_next_code = 9
+_next_code = max(v for v in error_codes.values())
 
 def add_code(name):
     global _next_code
